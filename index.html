@@ -1,48 +1,165 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Test Search Page</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Extension Test Harness</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: #eee;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
+    :root { color-scheme: dark; }
+    html, body { height: 100%; margin: 0; background: #0b0b0f; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    header {
+      position: sticky; top: 0; z-index: 5;
+      display: grid; gap: 10px;
+      padding: 12px; border-bottom: 1px solid #222;
+      background: rgba(11,11,15,.92); backdrop-filter: blur(8px);
     }
-    .box {
-      text-align: center;
-    }
-    input[type="text"] {
-      width: 320px;
-      padding: 12px;
-      font-size: 16px;
-      border: none;
-      border-radius: 4px;
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    input {
+      flex: 1; min-width: 260px;
+      padding: 10px 12px; border-radius: 10px; border: 1px solid #2a2a33;
+      background: #12121a; color: #fff; outline: none;
     }
     button {
-      padding: 12px 18px;
-      font-size: 16px;
-      margin-left: 6px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
+      padding: 10px 12px; border-radius: 10px; border: 0;
+      background: #2b6cff; color: #fff; cursor: pointer; font-weight: 700;
     }
+    button.secondary { background: #2a2a33; }
+    button.danger { background: #ff3b3b; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+
+    #layout { height: calc(100% - 140px); display: grid; grid-template-columns: 1.2fr .8fr; gap: 12px; padding: 12px; }
+    #left, #right { border: 1px solid #222; border-radius: 14px; overflow: hidden; background: #0f0f16; }
+    #left { display: grid; grid-template-rows: auto 1fr; }
+    #right { display: grid; grid-template-rows: auto 1fr; }
+    .panelTitle { padding: 10px 12px; border-bottom: 1px solid #222; color: #d7d7e0; font-weight: 700; }
+    iframe { width: 100%; height: 100%; border: 0; background: #000; display: none; }
+    pre {
+      margin: 0; padding: 12px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+      color: #cfd0da; font-size: 13px; line-height: 1.35;
+    }
+    code { background: #141422; padding: 2px 6px; border-radius: 6px; }
+    .hint { color: #b7b7c4; font-size: 13px; }
   </style>
 </head>
 <body>
-  <div class="box">
-    <h1>Search Test</h1>
-    <p>Use this to test your extension’s blocking rules.</p>
+  <header>
+    <div class="row">
+      <input id="url" value="https://example.com" placeholder="Target URL (https://...)" />
+      <button id="fs" class="secondary">Toggle Fullscreen</button>
+      <button id="clear" class="secondary">Clear Log</button>
+    </div>
+    <div class="row">
+      <button id="loadFrame">Load in iframe</button>
+      <button id="openPopup" class="secondary">Open popup window</button>
+      <button id="redirectTop" class="danger">Redirect top page</button>
+      <button id="spaPush" class="secondary">SPA: pushState</button>
+      <button id="spaReplace" class="secondary">SPA: replaceState</button>
+    </div>
+    <div class="hint">
+      This page is for testing whether your extension detects: top-level navigation, iframes, popups, redirects, and SPA URL changes.
+      Some sites block iframes; if the iframe stays blank, that’s expected.
+    </div>
+  </header>
 
-    <form action="https://www.google.com/search" method="GET" target="_blank">
-      <input type="text" name="q" placeholder="Type anything...">
-      <button type="submit">Search</button>
-    </form>
+  <div id="layout">
+    <div id="left">
+      <div class="panelTitle">Iframe View (if allowed)</div>
+      <iframe id="frame" allow="fullscreen"></iframe>
+    </div>
+    <div id="right">
+      <div class="panelTitle">Action Log</div>
+      <pre id="log"></pre>
+    </div>
   </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const input = $("url");
+    const frame = $("frame");
+    const logEl = $("log");
+
+    function normalizeUrl(raw) {
+      const s = (raw || "").trim();
+      if (!s) return "";
+      if (!/^https?:\/\//i.test(s)) return "https://" + s;
+      return s;
+    }
+
+    function log(msg) {
+      const line = `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+      logEl.textContent = line + logEl.textContent;
+      console.log(msg);
+    }
+
+    async function toggleFullscreen() {
+      try {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
+          log("Entered fullscreen (documentElement).");
+        } else {
+          await document.exitFullscreen();
+          log("Exited fullscreen.");
+        }
+      } catch (e) {
+        log("Fullscreen failed (browser policy). Try F11.");
+      }
+    }
+
+    // Buttons
+    $("fs").addEventListener("click", toggleFullscreen);
+
+    $("clear").addEventListener("click", () => {
+      logEl.textContent = "";
+      log("Log cleared.");
+    });
+
+    $("loadFrame").addEventListener("click", () => {
+      const url = normalizeUrl(input.value);
+      if (!url) return;
+      frame.style.display = "block";
+      frame.src = url;
+      log(`Loaded in iframe: ${url}`);
+    });
+
+    $("openPopup").addEventListener("click", () => {
+      const url = normalizeUrl(input.value);
+      if (!url) return;
+      const w = window.open(url, "_blank", "noopener,noreferrer,width=1200,height=800");
+      log(w ? `Opened popup: ${url}` : "Popup blocked by browser.");
+    });
+
+    $("redirectTop").addEventListener("click", () => {
+      const url = normalizeUrl(input.value);
+      if (!url) return;
+      log(`Redirecting TOP page to: ${url}`);
+      // Top-level navigation (your extension should always see this)
+      location.href = url;
+    });
+
+    // SPA-style changes (doesn't actually navigate, only changes address bar)
+    function spaChange(mode) {
+      const url = normalizeUrl(input.value);
+      if (!url) return;
+
+      // Convert absolute URL to a path on THIS origin for demo purposes
+      // because pushState cannot change to a different origin.
+      const u = new URL(url);
+      const newPath = `/spa-test/${encodeURIComponent(u.host)}${u.pathname}${u.search}${u.hash}`;
+
+      if (mode === "push") history.pushState({ t: Date.now() }, "", newPath);
+      if (mode === "replace") history.replaceState({ t: Date.now() }, "", newPath);
+
+      log(`SPA ${mode}State -> ${location.href}`);
+    }
+
+    $("spaPush").addEventListener("click", () => spaChange("push"));
+    $("spaReplace").addEventListener("click", () => spaChange("replace"));
+
+    // Log navigation-related events on THIS page
+    window.addEventListener("popstate", () => log(`popstate -> ${location.href}`));
+    window.addEventListener("hashchange", () => log(`hashchange -> ${location.href}`));
+
+    log("Test harness ready.");
+  </script>
 </body>
 </html>
